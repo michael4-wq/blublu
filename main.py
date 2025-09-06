@@ -3,7 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.enums import ParseMode  # <-- исправлено здесь
+from pyrogram.enums import ParseMode  # enum для parse_mode
 
 import config
 import config_memes as cfg
@@ -11,6 +11,8 @@ import buttons
 import keyboards
 from custom_filters import button_filter
 
+# Словарь для хранения состояния пользователей
+user_state = {}  # key: user_id, value: "en" или "ru"
 
 bot = Client(
     name="my_bot",
@@ -93,36 +95,35 @@ async def time_command(_, message: Message):
     )
 
 
-@bot.on_message(filters.command("meme_en"))
-async def meme_en_command(_, message: Message):
-    query = " ".join(message.text.split()[1:])
-    if not query:
-        await message.reply(
-            "✍️ Напиши название мема: <b>/meme_en rickroll</b>",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    print(f"[LOG] Поиск англоязычного мема: {query}")
-    result = search_kym(query)
-    await message.reply(result, parse_mode=ParseMode.HTML)
+# === КНОПКИ МЕМОВ ===
+@bot.on_message(button_filter(buttons.meme_en_button))
+async def meme_en_button(_, message: Message):
+    user_state[message.from_user.id] = "en"
+    await message.reply("✍️ Введи название англоязычного мема:", parse_mode=ParseMode.HTML)
 
 
-@bot.on_message(filters.command("meme_ru"))
-async def meme_ru_command(_, message: Message):
-    query = " ".join(message.text.split()[1:])
-    if not query:
-        await message.reply(
-            "✍️ Напиши название мема: <b>/meme_ru жабка</b>",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    print(f"[LOG] Поиск русского мема: {query}")
-    result = search_memepedia(query)
+@bot.on_message(button_filter(buttons.meme_ru_button))
+async def meme_ru_button(_, message: Message):
+    user_state[message.from_user.id] = "ru"
+    await message.reply("✍️ Введи название русского мема:", parse_mode=ParseMode.HTML)
+
+
+# === ОБРАБОТКА ВВОДА МЕМА ===
+@bot.on_message()
+async def handle_meme_text(_, message: Message):
+    uid = message.from_user.id
+    if uid not in user_state:
+        return  # обычное сообщение, не мем
+    query = message.text.strip()
+    if user_state[uid] == "en":
+        result = search_kym(query)
+    else:
+        result = search_memepedia(query)
     await message.reply(result, parse_mode=ParseMode.HTML)
+    user_state.pop(uid)  # очищаем состояние
 
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
     print("[LOG] Бот запускается...")
     bot.run()
-

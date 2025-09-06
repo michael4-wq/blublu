@@ -1,9 +1,10 @@
 import time
 import requests
+from requests.adapters import HTTPAdapter, Retry
 from bs4 import BeautifulSoup
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.enums import ParseMode  # enum для parse_mode
+from pyrogram.enums import ParseMode
 
 import config
 import config_memes as cfg
@@ -13,6 +14,12 @@ from custom_filters import button_filter
 
 # Словарь для хранения состояния пользователей
 user_state = {}  # key: user_id, value: "en" или "ru"
+
+# Настройка сессии с повторными попытками
+session = requests.Session()
+retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+session.mount('https://', HTTPAdapter(max_retries=retries))
+session.mount('http://', HTTPAdapter(max_retries=retries))
 
 bot = Client(
     name="my_bot",
@@ -24,10 +31,10 @@ bot = Client(
 
 # === ФУНКЦИИ ПОИСКА ===
 def search_kym(query: str) -> str:
-    """Поиск мема на KnowYourMeme (EN)."""
+    """Поиск мема на KnowYourMeme (EN) с повторными попытками."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
-        r = requests.get(url, headers=cfg.HEADERS, timeout=cfg.REQUEST_TIMEOUT)
+        r = session.get(url, headers=cfg.HEADERS, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
 
         first_result = soup.select_one(".entry_list a")
@@ -35,7 +42,7 @@ def search_kym(query: str) -> str:
             return "❌ Мем не найден на <b>KnowYourMeme</b>."
 
         link = cfg.KYM_BASE_URL + first_result["href"]
-        page = requests.get(link, headers=cfg.HEADERS, timeout=cfg.REQUEST_TIMEOUT)
+        page = session.get(link, headers=cfg.HEADERS, timeout=20)
         soup = BeautifulSoup(page.text, "html.parser")
 
         title = soup.select_one("h1").get_text(strip=True)
@@ -47,10 +54,10 @@ def search_kym(query: str) -> str:
 
 
 def search_memepedia(query: str) -> str:
-    """Поиск мема на Memepedia (RU)."""
+    """Поиск мема на Memepedia (RU) с повторными попытками."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
-        r = requests.get(url, headers=cfg.HEADERS, timeout=cfg.REQUEST_TIMEOUT)
+        r = session.get(url, headers=cfg.HEADERS, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
 
         first_result = soup.select_one(".entry-title a")
@@ -58,7 +65,7 @@ def search_memepedia(query: str) -> str:
             return "❌ Мем не найден на <b>Memepedia</b>."
 
         link = first_result["href"]
-        page = requests.get(link, headers=cfg.HEADERS, timeout=cfg.REQUEST_TIMEOUT)
+        page = session.get(link, headers=cfg.HEADERS, timeout=20)
         soup = BeautifulSoup(page.text, "html.parser")
 
         title = soup.select_one("h1").get_text(strip=True)
@@ -113,14 +120,14 @@ async def meme_ru_button(_, message: Message):
 async def handle_meme_text(_, message: Message):
     uid = message.from_user.id
     if uid not in user_state:
-        return  # обычное сообщение, не мем
+        return
     query = message.text.strip()
     if user_state[uid] == "en":
         result = search_kym(query)
     else:
         result = search_memepedia(query)
     await message.reply(result, parse_mode=ParseMode.HTML)
-    user_state.pop(uid)  # очищаем состояние
+    user_state.pop(uid)
 
 
 # === ЗАПУСК ===

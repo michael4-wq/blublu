@@ -4,11 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a4891ce4-be94-4858-a31e-ef900e2f38e6" name="Changes" comment="commit mge">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/my_bot.session" beforeDir="false" afterPath="$PROJECT_DIR$/my_bot.session" afterDir="false" />
-    </list>
+    <list default="true" id="a4891ce4-be94-4858-a31e-ef900e2f38e6" name="Changes" comment="commit mge" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -202,7 +198,23 @@
       <option name="project" value="LOCAL" />
       <updated>1757406683896</updated>
     </task>
-    <option name="localTasksCounter" value="16" />
+    <task id="LOCAL-00016" summary="commit mge">
+      <option name="closed" value="true" />
+      <created>1757407138403</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1757407138403</updated>
+    </task>
+    <task id="LOCAL-00017" summary="commit mge">
+      <option name="closed" value="true" />
+      <created>1757407725590</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1757407725590</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">

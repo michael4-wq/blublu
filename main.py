@@ -17,9 +17,9 @@ user_state = {}
 # key: user_id
 # value: {"lang": "en"/"ru", "suggestions": [{"title":..., "href":...}]}
 
-# Настройка сессии с быстрыми таймаутами
+# Настройка сессии с таймаутом и повторными попытками
 session = requests.Session()
-retries = Retry(total=1, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
 session.mount('https://', HTTPAdapter(max_retries=retries))
 session.mount('http://', HTTPAdapter(max_retries=retries))
 
@@ -30,14 +30,18 @@ bot = Client(
     bot_token=config.BOT_TOKEN,
 )
 
+
 # === ФУНКЦИИ ПОИСКА ===
 def search_kym(query: str):
     """Поиск мема на KnowYourMeme (EN) с подсказками и точным выбором."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
-        r = session.get(url, headers=cfg.HEADERS, timeout=7)
-        soup = BeautifulSoup(r.text, "html.parser")
+        try:
+            r = session.get(url, headers=cfg.HEADERS, timeout=15)
+        except requests.exceptions.ReadTimeout:
+            return "⚠️ Сервер KnowYourMeme не отвечает. Попробуйте через несколько секунд."
 
+        soup = BeautifulSoup(r.text, "html.parser")
         results = soup.select(".entry_list a")[:5]
         if not results:
             return "❌ Мем не найден на <b>KnowYourMeme</b>."
@@ -46,14 +50,14 @@ def search_kym(query: str):
         for r_item in results:
             if r_item.get_text(strip=True).lower() == query.lower():
                 link = cfg.KYM_BASE_URL + r_item["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=7)
+                page = session.get(link, headers=cfg.HEADERS, timeout=15)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 title = soup_page.select_one("h1")
                 summary = soup_page.select_one(".bodycopy")
 
                 title_text = title.get_text(strip=True) if title else "Без названия"
-                summary_text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
-
+                summary_text = summary.get_text(strip=True)[
+                               :cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
         # Если нет точного совпадения → список подсказок
@@ -67,9 +71,12 @@ def search_memepedia(query: str):
     """Поиск мема на Memepedia (RU) с безопасным извлечением текста."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
-        r = session.get(url, headers=cfg.HEADERS, timeout=7)
-        soup = BeautifulSoup(r.text, "html.parser")
+        try:
+            r = session.get(url, headers=cfg.HEADERS, timeout=15)
+        except requests.exceptions.ReadTimeout:
+            return "⚠️ Сервер Memepedia не отвечает. Попробуйте через несколько секунд."
 
+        soup = BeautifulSoup(r.text, "html.parser")
         results = soup.select(".entry-title a")[:5]
         if not results:
             return "❌ Мем не найден на <b>Memepedia</b>."
@@ -77,14 +84,14 @@ def search_memepedia(query: str):
         for r_item in results:
             if r_item.get_text(strip=True).lower() == query.lower():
                 link = r_item["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=7)
+                page = session.get(link, headers=cfg.HEADERS, timeout=15)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 title = soup_page.select_one("h1")
                 summary = soup_page.select_one(".entry-content")
 
                 title_text = title.get_text(strip=True) if title else "Без названия"
-                summary_text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
-
+                summary_text = summary.get_text(strip=True)[
+                               :cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
         # если точного совпадения нет → список подсказок
@@ -147,15 +154,17 @@ async def handle_meme_text(_, message: Message):
         for s in state["suggestions"]:
             if s["title"].lower() == query.lower():
                 link = cfg.KYM_BASE_URL + s["href"] if state["lang"] == "en" else s["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=7)
+                page = session.get(link, headers=cfg.HEADERS, timeout=15)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 title = soup_page.select_one("h1")
                 summary = soup_page.select_one(".bodycopy" if state["lang"] == "en" else ".entry-content")
 
                 title_text = title.get_text(strip=True) if title else "Без названия"
-                summary_text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
+                summary_text = summary.get_text(strip=True)[
+                               :cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
 
-                await message.reply(f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>", parse_mode=ParseMode.HTML)
+                await message.reply(f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>",
+                                    parse_mode=ParseMode.HTML)
                 user_state.pop(uid)
                 return
         await message.reply("❌ Пожалуйста, выбери один из предложенных вариантов.")

@@ -31,7 +31,7 @@ bot = Client(
 
 # === ФУНКЦИИ ПОИСКА ===
 def search_kym(query: str) -> str:
-    """Поиск мема на KnowYourMeme (EN) с повторными попытками."""
+    """Поиск мема на KnowYourMeme (EN)."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
         r = session.get(url, headers=cfg.HEADERS, timeout=20)
@@ -46,7 +46,10 @@ def search_kym(query: str) -> str:
         soup = BeautifulSoup(page.text, "html.parser")
 
         title = soup.select_one("h1").get_text(strip=True)
-        summary = soup.select_one(".bodycopy").get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
+
+        summary_tag = soup.select_one(".bodycopy")
+        summary = summary_tag.get_text(strip=True) if summary_tag else "Описание отсутствует."
+        summary = summary[:cfg.MAX_TEXT_LENGTH] + "..."
 
         return f"📖 <b>{title}</b>\n{summary}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
     except Exception as e:
@@ -54,7 +57,7 @@ def search_kym(query: str) -> str:
 
 
 def search_memepedia(query: str) -> str:
-    """Поиск мема на Memepedia (RU) с повторными попытками."""
+    """Поиск мема на Memepedia (RU)."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
         r = session.get(url, headers=cfg.HEADERS, timeout=20)
@@ -69,7 +72,10 @@ def search_memepedia(query: str) -> str:
         soup = BeautifulSoup(page.text, "html.parser")
 
         title = soup.select_one("h1").get_text(strip=True)
-        summary = soup.select_one(".entry-content").get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
+
+        summary_tag = soup.select_one(".entry-content")
+        summary = summary_tag.get_text(strip=True) if summary_tag else "Описание отсутствует."
+        summary = summary[:cfg.MAX_TEXT_LENGTH] + "..."
 
         return f"📖 <b>{title}</b>\n{summary}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
     except Exception as e:
@@ -84,8 +90,8 @@ async def start_command(_, message: Message):
         "👋 Привет! Я бот, который умеет показывать время и искать мемы.\n\n"
         "Доступные команды:\n"
         "<b>/time</b> – текущее время ⏰\n"
-        "<b>/meme_en &lt;название&gt;</b> – поиск англоязычного мема 🇺🇸\n"
-        "<b>/meme_ru &lt;название&gt;</b> – поиск русского мема 🇷🇺\n",
+        "<b>/meme_en название</b> – поиск англоязычного мема 🇺🇸\n"
+        "<b>/meme_ru название</b> – поиск русского мема 🇷🇺\n",
         reply_markup=keyboards.main_keyboard,
         parse_mode=ParseMode.HTML
     )
@@ -115,7 +121,28 @@ async def meme_ru_button(_, message: Message):
     await message.reply("✍️ Введи название русского мема:", parse_mode=ParseMode.HTML)
 
 
-# === ОБРАБОТКА ВВОДА МЕМА ===
+# === КОМАНДЫ ПОИСКА МЕМОВ ===
+@bot.on_message(filters.command("meme_en"))
+async def meme_en_command(_, message: Message):
+    query = " ".join(message.command[1:])
+    if not query:
+        await message.reply("⚠️ Напиши название мема. Пример: <code>/meme_en doge</code>", parse_mode=ParseMode.HTML)
+        return
+    result = search_kym(query)
+    await message.reply(result, parse_mode=ParseMode.HTML, reply_markup=keyboards.main_keyboard)
+
+
+@bot.on_message(filters.command("meme_ru"))
+async def meme_ru_command(_, message: Message):
+    query = " ".join(message.command[1:])
+    if not query:
+        await message.reply("⚠️ Напиши название мема. Пример: <code>/meme_ru ждун</code>", parse_mode=ParseMode.HTML)
+        return
+    result = search_memepedia(query)
+    await message.reply(result, parse_mode=ParseMode.HTML, reply_markup=keyboards.main_keyboard)
+
+
+# === ОБРАБОТКА ВВОДА МЕМА ЧЕРЕЗ КНОПКИ ===
 @bot.on_message()
 async def handle_meme_text(_, message: Message):
     uid = message.from_user.id
@@ -126,7 +153,7 @@ async def handle_meme_text(_, message: Message):
         result = search_kym(query)
     else:
         result = search_memepedia(query)
-    await message.reply(result, parse_mode=ParseMode.HTML)
+    await message.reply(result, parse_mode=ParseMode.HTML, reply_markup=keyboards.main_keyboard)
     user_state.pop(uid)
 
 

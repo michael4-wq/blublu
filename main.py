@@ -1,9 +1,8 @@
-import asyncio
 from aiohttp import ClientSession, ClientTimeout
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message
 from pyrogram.enums import ParseMode
 import time
 import config
@@ -22,9 +21,11 @@ bot = Client(
     bot_token=config.BOT_TOKEN,
 )
 
+
 # === Вспомогательные функции ===
 def similar(a, b):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
 
 def clean_text(block):
     if not block:
@@ -33,12 +34,14 @@ def clean_text(block):
         a.replace_with(a.get_text())
     return block.get_text(strip=True)
 
+
 async def fetch_html(session, url):
     try:
         async with session.get(url, headers=cfg.HEADERS, timeout=ClientTimeout(total=10)) as resp:
             return await resp.text()
     except:
         return None
+
 
 # === Асинхронный поиск мемов ===
 async def search_kym(query: str):
@@ -71,6 +74,7 @@ async def search_kym(query: str):
         suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
+
 async def search_memepedia(query: str):
     url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
     async with ClientSession() as session:
@@ -101,6 +105,7 @@ async def search_memepedia(query: str):
         suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
+
 # === ХЕНДЛЕРЫ ===
 @bot.on_message(filters.command("start") | button_filter(buttons.back_button))
 async def start_command(_, message: Message):
@@ -114,20 +119,24 @@ async def start_command(_, message: Message):
         parse_mode=ParseMode.HTML
     )
 
+
 @bot.on_message(filters.command("time") | button_filter(buttons.time_button))
 async def time_command(_, message: Message):
     current_time = time.strftime("%H:%M:%S")
     await message.reply(f"⏰ Сейчас: <b>{current_time}</b>", reply_markup=keyboards.main_keyboard, parse_mode=ParseMode.HTML)
+
 
 @bot.on_message(button_filter(buttons.meme_en_button))
 async def meme_en_button(_, message: Message):
     user_state[message.from_user.id] = {"lang": "en"}
     await message.reply("✍️ Введи название англоязычного мема:", parse_mode=ParseMode.HTML)
 
+
 @bot.on_message(button_filter(buttons.meme_ru_button))
 async def meme_ru_button(_, message: Message):
     user_state[message.from_user.id] = {"lang": "ru"}
     await message.reply("✍️ Введи название русского мема:", parse_mode=ParseMode.HTML)
+
 
 # === ОБРАБОТКА ВВОДА МЕМА ===
 @bot.on_message()

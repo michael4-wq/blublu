@@ -15,9 +15,9 @@ from custom_filters import button_filter
 # Словарь для хранения состояния пользователей
 user_state = {}  # key: user_id, value: "en" или "ru"
 
-# Настройка сессии с повторными попытками
+# Настройка сессии с быстрыми таймаутами
 session = requests.Session()
-retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+retries = Retry(total=1, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
 session.mount('https://', HTTPAdapter(max_retries=retries))
 session.mount('http://', HTTPAdapter(max_retries=retries))
 
@@ -34,27 +34,24 @@ def search_kym(query: str) -> str:
     """Поиск мема на KnowYourMeme (EN)."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
-        r = session.get(url, headers=cfg.HEADERS, timeout=30)
+        r = session.get(url, headers=cfg.HEADERS, timeout=7)
         soup = BeautifulSoup(r.text, "html.parser")
 
         results = soup.select(".entry_list a")[:5]
         if not results:
             return "❌ Мем не найден на <b>KnowYourMeme</b>."
 
-        # Если найдено несколько результатов → предлагаем список
         if len(results) > 1:
             suggestions = [r.get_text(strip=True) for r in results]
             suggest_text = "\n".join([f"- {s}" for s in suggestions])
             return f"🤔 Может быть, вы имели в виду:\n{suggest_text}"
 
-        # Если найден только один результат → открываем страницу
         link = cfg.KYM_BASE_URL + results[0]["href"]
-        page = session.get(link, headers=cfg.HEADERS, timeout=30)
+        page = session.get(link, headers=cfg.HEADERS, timeout=7)
         soup = BeautifulSoup(page.text, "html.parser")
 
         title = soup.select_one("h1")
         summary = soup.select_one(".bodycopy")
-
         if not title or not summary:
             return "⚠️ Не удалось извлечь данные с KnowYourMeme."
 
@@ -69,27 +66,24 @@ def search_memepedia(query: str) -> str:
     """Поиск мема на Memepedia (RU)."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
-        r = session.get(url, headers=cfg.HEADERS, timeout=30)
+        r = session.get(url, headers=cfg.HEADERS, timeout=7)
         soup = BeautifulSoup(r.text, "html.parser")
 
         results = soup.select(".entry-title a")[:5]
         if not results:
             return "❌ Мем не найден на <b>Memepedia</b>."
 
-        # Если найдено несколько результатов → предлагаем список
         if len(results) > 1:
             suggestions = [r.get_text(strip=True) for r in results]
             suggest_text = "\n".join([f"- {s}" for s in suggestions])
             return f"🤔 Может быть, вы имели в виду:\n{suggest_text}"
 
-        # Если найден только один результат → открываем страницу
         link = results[0]["href"]
-        page = session.get(link, headers=cfg.HEADERS, timeout=30)
+        page = session.get(link, headers=cfg.HEADERS, timeout=7)
         soup = BeautifulSoup(page.text, "html.parser")
 
         title = soup.select_one("h1")
         summary = soup.select_one(".entry-content")
-
         if not title or not summary:
             return "⚠️ Не удалось извлечь данные с Memepedia."
 

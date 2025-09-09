@@ -145,7 +145,23 @@
       <option name="project" value="LOCAL" />
       <updated>1757404720319</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="commit mge">
+      <option name="closed" value="true" />
+      <created>1757404939973</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1757404939973</updated>
+    </task>
+    <task id="LOCAL-00010" summary="commit mge">
+      <option name="closed" value="true" />
+      <created>1757405231814</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1757405231814</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">

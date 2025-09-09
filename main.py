@@ -23,6 +23,12 @@ retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504]
 session.mount('https://', HTTPAdapter(max_retries=retries))
 session.mount('http://', HTTPAdapter(max_retries=retries))
 
+# Устанавливаем User-Agent
+cfg.HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/117.0 Safari/537.36"
+}
+
 bot = Client(
     name="my_bot",
     api_id=config.API_ID,
@@ -37,20 +43,20 @@ def search_kym(query: str):
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
         try:
-            r = session.get(url, headers=cfg.HEADERS, timeout=15)
-        except requests.exceptions.ReadTimeout:
-            return "⚠️ Сервер KnowYourMeme не отвечает. Попробуйте через несколько секунд."
+            time.sleep(1)  # небольшая задержка между запросами
+            r = session.get(url, headers=cfg.HEADERS, timeout=20)
+        except requests.exceptions.RequestException:
+            return "⚠️ Не удалось получить данные с KnowYourMeme. Попробуйте позже."
 
         soup = BeautifulSoup(r.text, "html.parser")
         results = soup.select(".entry_list a")[:5]
         if not results:
             return "❌ Мем не найден на <b>KnowYourMeme</b>."
 
-        # Проверка точного совпадения
         for r_item in results:
             if r_item.get_text(strip=True).lower() == query.lower():
                 link = cfg.KYM_BASE_URL + r_item["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=15)
+                page = session.get(link, headers=cfg.HEADERS, timeout=20)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 title = soup_page.select_one("h1")
                 summary = soup_page.select_one(".bodycopy")
@@ -72,9 +78,10 @@ def search_memepedia(query: str):
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
         try:
-            r = session.get(url, headers=cfg.HEADERS, timeout=15)
-        except requests.exceptions.ReadTimeout:
-            return "⚠️ Сервер Memepedia не отвечает. Попробуйте через несколько секунд."
+            time.sleep(1)  # задержка между запросами
+            r = session.get(url, headers=cfg.HEADERS, timeout=20)
+        except requests.exceptions.RequestException:
+            return "⚠️ Не удалось получить данные с Memepedia. Попробуйте позже."
 
         soup = BeautifulSoup(r.text, "html.parser")
         results = soup.select(".entry-title a")[:5]
@@ -84,7 +91,7 @@ def search_memepedia(query: str):
         for r_item in results:
             if r_item.get_text(strip=True).lower() == query.lower():
                 link = r_item["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=15)
+                page = session.get(link, headers=cfg.HEADERS, timeout=20)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 title = soup_page.select_one("h1")
                 summary = soup_page.select_one(".entry-content")
@@ -154,7 +161,7 @@ async def handle_meme_text(_, message: Message):
         for s in state["suggestions"]:
             if s["title"].lower() == query.lower():
                 link = cfg.KYM_BASE_URL + s["href"] if state["lang"] == "en" else s["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=15)
+                page = session.get(link, headers=cfg.HEADERS, timeout=20)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 title = soup_page.select_one("h1")
                 summary = soup_page.select_one(".bodycopy" if state["lang"] == "en" else ".entry-content")
@@ -163,8 +170,10 @@ async def handle_meme_text(_, message: Message):
                 summary_text = summary.get_text(strip=True)[
                                :cfg.MAX_TEXT_LENGTH] + "..." if summary else "Описание недоступно."
 
-                await message.reply(f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>",
-                                    parse_mode=ParseMode.HTML)
+                await message.reply(
+                    f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>",
+                    parse_mode=ParseMode.HTML
+                )
                 user_state.pop(uid)
                 return
         await message.reply("❌ Пожалуйста, выбери один из предложенных вариантов.")

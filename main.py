@@ -13,7 +13,9 @@ import keyboards
 from custom_filters import button_filter
 
 # Словарь для хранения состояния пользователей
-user_state = {}  # key: user_id, value: "en" или "ru"
+user_state = {}
+# key: user_id
+# value: {"lang": "en"/"ru", "suggestions": [{"title":..., "href":...}]}
 
 # Настройка сессии с быстрыми таймаутами
 session = requests.Session()
@@ -28,10 +30,9 @@ bot = Client(
     bot_token=config.BOT_TOKEN,
 )
 
-
 # === ФУНКЦИИ ПОИСКА ===
-def search_kym(query: str) -> str:
-    """Поиск мема на KnowYourMeme (EN)."""
+def search_kym(query: str):
+    """Поиск мема на KnowYourMeme (EN) с подсказками и точным выбором."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
         r = session.get(url, headers=cfg.HEADERS, timeout=7)
@@ -41,29 +42,26 @@ def search_kym(query: str) -> str:
         if not results:
             return "❌ Мем не найден на <b>KnowYourMeme</b>."
 
-        if len(results) > 1:
-            suggestions = [r.get_text(strip=True) for r in results]
-            suggest_text = "\n".join([f"- {s}" for s in suggestions])
-            return f"🤔 Может быть, вы имели в виду:\n{suggest_text}"
+        # Проверка точного совпадения
+        for r_item in results:
+            if r_item.get_text(strip=True).lower() == query.lower():
+                link = cfg.KYM_BASE_URL + r_item["href"]
+                page = session.get(link, headers=cfg.HEADERS, timeout=7)
+                soup_page = BeautifulSoup(page.text, "html.parser")
+                title = soup_page.select_one("h1")
+                summary = soup_page.select_one(".bodycopy")
+                text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
+                return f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
-        link = cfg.KYM_BASE_URL + results[0]["href"]
-        page = session.get(link, headers=cfg.HEADERS, timeout=7)
-        soup = BeautifulSoup(page.text, "html.parser")
-
-        title = soup.select_one("h1")
-        summary = soup.select_one(".bodycopy")
-        if not title or not summary:
-            return "⚠️ Не удалось извлечь данные с KnowYourMeme."
-
-        text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-        return f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
-
+        # Если нет точного совпадения → возвращаем список подсказок
+        suggestions_list = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
+        return suggestions_list
     except Exception as e:
         return f"⚠️ Ошибка при поиске на KnowYourMeme: {e}"
 
 
-def search_memepedia(query: str) -> str:
-    """Поиск мема на Memepedia (RU)."""
+def search_memepedia(query: str):
+    """Поиск мема на Memepedia (RU) с подсказками и точным выбором."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
         r = session.get(url, headers=cfg.HEADERS, timeout=7)
@@ -73,23 +71,18 @@ def search_memepedia(query: str) -> str:
         if not results:
             return "❌ Мем не найден на <b>Memepedia</b>."
 
-        if len(results) > 1:
-            suggestions = [r.get_text(strip=True) for r in results]
-            suggest_text = "\n".join([f"- {s}" for s in suggestions])
-            return f"🤔 Может быть, вы имели в виду:\n{suggest_text}"
+        for r_item in results:
+            if r_item.get_text(strip=True).lower() == query.lower():
+                link = r_item["href"]
+                page = session.get(link, headers=cfg.HEADERS, timeout=7)
+                soup_page = BeautifulSoup(page.text, "html.parser")
+                title = soup_page.select_one("h1")
+                summary = soup_page.select_one(".entry-content")
+                text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
+                return f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
-        link = results[0]["href"]
-        page = session.get(link, headers=cfg.HEADERS, timeout=7)
-        soup = BeautifulSoup(page.text, "html.parser")
-
-        title = soup.select_one("h1")
-        summary = soup.select_one(".entry-content")
-        if not title or not summary:
-            return "⚠️ Не удалось извлечь данные с Memepedia."
-
-        text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-        return f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
-
+        suggestions_list = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
+        return suggestions_list
     except Exception as e:
         return f"⚠️ Ошибка при поиске на Memepedia: {e}"
 
@@ -97,7 +90,6 @@ def search_memepedia(query: str) -> str:
 # === ХЕНДЛЕРЫ ===
 @bot.on_message(filters.command("start") | button_filter(buttons.back_button))
 async def start_command(_, message: Message):
-    print(f"[LOG] Пользователь {message.from_user.id} написал /start")
     await message.reply(
         "👋 Привет! Я бот, который умеет показывать время и искать мемы.\n\n"
         "Доступные команды:\n"
@@ -112,7 +104,6 @@ async def start_command(_, message: Message):
 @bot.on_message(filters.command("time") | button_filter(buttons.time_button))
 async def time_command(_, message: Message):
     current_time = time.strftime("%H:%M:%S")
-    print(f"[LOG] Пользователь {message.from_user.id} запросил время")
     await message.reply(
         f"⏰ Сейчас: <b>{current_time}</b>",
         reply_markup=keyboards.main_keyboard,
@@ -123,13 +114,13 @@ async def time_command(_, message: Message):
 # === КНОПКИ МЕМОВ ===
 @bot.on_message(button_filter(buttons.meme_en_button))
 async def meme_en_button(_, message: Message):
-    user_state[message.from_user.id] = "en"
+    user_state[message.from_user.id] = {"lang": "en"}
     await message.reply("✍️ Введи название англоязычного мема:", parse_mode=ParseMode.HTML)
 
 
 @bot.on_message(button_filter(buttons.meme_ru_button))
 async def meme_ru_button(_, message: Message):
-    user_state[message.from_user.id] = "ru"
+    user_state[message.from_user.id] = {"lang": "ru"}
     await message.reply("✍️ Введи название русского мема:", parse_mode=ParseMode.HTML)
 
 
@@ -140,16 +131,36 @@ async def handle_meme_text(_, message: Message):
     if uid not in user_state:
         return
 
+    state = user_state[uid]
     query = message.text.strip()
     await message.reply("⏳ Ищу мем, подожди немного...")
 
-    if user_state[uid] == "en":
-        result = search_kym(query)
-    else:
-        result = search_memepedia(query)
+    # Если есть предыдущие подсказки → это выбор одного из вариантов
+    if "suggestions" in state:
+        for s in state["suggestions"]:
+            if s["title"].lower() == query.lower():
+                link = cfg.KYM_BASE_URL + s["href"] if state["lang"] == "en" else s["href"]
+                page = session.get(link, headers=cfg.HEADERS, timeout=7)
+                soup_page = BeautifulSoup(page.text, "html.parser")
+                title = soup_page.select_one("h1")
+                summary = soup_page.select_one(".bodycopy" if state["lang"] == "en" else ".entry-content")
+                text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
+                await message.reply(f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>", parse_mode=ParseMode.HTML)
+                user_state.pop(uid)
+                return
+        await message.reply("❌ Пожалуйста, выбери один из предложенных вариантов.")
+        return
 
-    await message.reply(result, parse_mode=ParseMode.HTML)
-    user_state.pop(uid)
+    # обычный поиск
+    result = search_kym(query) if state["lang"] == "en" else search_memepedia(query)
+
+    if isinstance(result, list):  # получили список подсказок
+        user_state[uid]["suggestions"] = result
+        suggest_text = "\n".join([f"- {s['title']}" for s in result])
+        await message.reply(f"🤔 Может быть, вы имели в виду:\n{suggest_text}", parse_mode=ParseMode.HTML)
+    else:
+        await message.reply(result, parse_mode=ParseMode.HTML)
+        user_state.pop(uid)
 
 
 # === ЗАПУСК ===

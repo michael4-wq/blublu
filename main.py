@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-
+import time
 import config
 import config_memes as cfg
 import buttons

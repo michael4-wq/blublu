@@ -41,6 +41,8 @@ def similar(a, b):
 
 def clean_text(block):
     """Удаляем все ссылки и оставляем только текст"""
+    if not block:
+        return ""
     for a in block.find_all("a"):
         a.replace_with(a.get_text())
     return block.get_text(strip=True)
@@ -70,8 +72,9 @@ def search_kym(query: str):
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
         # подсказки с фильтром по схожести
+        threshold = 0.2  # минимальная схожесть
         suggestions = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
-        suggestions = [s for s in suggestions if similar(s["title"], query) >= 0.4]
+        suggestions = [s for s in suggestions if similar(s["title"], query) >= threshold]
         suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
@@ -102,8 +105,9 @@ def search_memepedia(query: str, lang="ru"):
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
         # подсказки
+        threshold = 0.2
         suggestions = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
-        suggestions = [s for s in suggestions if similar(s["title"], query) >= 0.4]
+        suggestions = [s for s in suggestions if similar(s["title"], query) >= threshold]
         suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
@@ -171,12 +175,12 @@ async def handle_meme_text(_, message: Message):
     # Поиск английских мемов сначала на KYM
     if state["lang"] == "en":
         result = search_kym(query)
-        if result is None or result == []:  # KYM не ответил или нет совпадений → Memepedia EN
+        if result is None or result == []:
             result = search_memepedia(query, lang="en")
     else:
         result = search_memepedia(query, lang="ru")
 
-    if isinstance(result, list):
+    if isinstance(result, list) and len(result) > 0:
         user_state[uid]["suggestions"] = result
         suggest_text = "\n".join([f"- {s['title']}" for s in result])
         await message.reply(f"🤔 Может быть, вы имели в виду:\n{suggest_text}", parse_mode=ParseMode.HTML)

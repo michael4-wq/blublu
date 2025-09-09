@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
+from difflib import SequenceMatcher
 
 import config
 import config_memes as cfg
@@ -34,15 +35,24 @@ bot = Client(
     bot_token=config.BOT_TOKEN,
 )
 
+# === Вспомогательные функции ===
+def similar(a, b):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+def clean_text(block):
+    """Удаляем все ссылки и оставляем только текст"""
+    for a in block.find_all("a"):
+        a.replace_with(a.get_text())
+    return block.get_text(strip=True)
+
 # === ПОИСК МЕМОВ ===
 def search_kym(query: str):
-    """Поиск мема на KYM с подсказками и безопасной очисткой текста."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
         time.sleep(1)
         r = session.get(url, headers=cfg.HEADERS, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
-        results = soup.select(".entry_list a")[:5]
+        results = soup.select(".entry_list a")[:10]
 
         if not results:
             return []
@@ -53,36 +63,28 @@ def search_kym(query: str):
                 link = cfg.KYM_BASE_URL + r_item["href"]
                 page = session.get(link, headers=cfg.HEADERS, timeout=20)
                 soup_page = BeautifulSoup(page.text, "html.parser")
-
-                # Берём только основной текст мема
                 summary_block = soup_page.select_one(".bodycopy")
-                if summary_block:
-                    for a in summary_block.find_all("a"):
-                        a.replace_with(a.get_text())
-                    summary_text = summary_block.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-                else:
-                    summary_text = "Описание недоступно."
-
+                summary_text = clean_text(summary_block)[:cfg.MAX_TEXT_LENGTH] + "..." if summary_block else "Описание недоступно."
                 title = soup_page.select_one("h1")
                 title_text = title.get_text(strip=True) if title else "Без названия"
-
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
-        # если нет точного совпадения → подсказки
+        # подсказки с фильтром по схожести
         suggestions = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
+        suggestions = [s for s in suggestions if similar(s["title"], query) >= 0.4]
+        suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
     except Exception:
-        return None  # KYM недоступен
+        return None
 
 def search_memepedia(query: str, lang="ru"):
-    """Поиск мема на Memepedia с подсказками и очисткой текста."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
         time.sleep(1)
         r = session.get(url, headers=cfg.HEADERS, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
-        results = soup.select(".entry-title a")[:5]
+        results = soup.select(".entry-title a")[:10]
 
         if not results:
             return "❌ Мем не найден на Memepedia."
@@ -94,21 +96,15 @@ def search_memepedia(query: str, lang="ru"):
                 page = session.get(link, headers=cfg.HEADERS, timeout=20)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 content_block = soup_page.select_one(".entry-content")
-
-                if content_block:
-                    for a in content_block.find_all("a"):
-                        a.replace_with(a.get_text())
-                    summary_text = content_block.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-                else:
-                    summary_text = "Описание недоступно."
-
+                summary_text = clean_text(content_block)[:cfg.MAX_TEXT_LENGTH] + "..." if content_block else "Описание недоступно."
                 title = soup_page.select_one("h1")
                 title_text = title.get_text(strip=True) if title else "Без названия"
-
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
         # подсказки
         suggestions = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
+        suggestions = [s for s in suggestions if similar(s["title"], query) >= 0.4]
+        suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
     except Exception:
@@ -161,13 +157,7 @@ async def handle_meme_text(_, message: Message):
                 page = session.get(link, headers=cfg.HEADERS, timeout=20)
                 soup_page = BeautifulSoup(page.text, "html.parser")
                 content_block = soup_page.select_one(".bodycopy" if state["lang"] == "en" else ".entry-content")
-                if content_block:
-                    for a in content_block.find_all("a"):
-                        a.replace_with(a.get_text())
-                    summary_text = content_block.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-                else:
-                    summary_text = "Описание недоступно."
-
+                summary_text = clean_text(content_block)[:cfg.MAX_TEXT_LENGTH] + "..." if content_block else "Описание недоступно."
                 title = soup_page.select_one("h1")
                 title_text = title.get_text(strip=True) if title else "Без названия"
 

@@ -1,11 +1,10 @@
-import time
-import requests
-from requests.adapters import HTTPAdapter, Retry
+import asyncio
+from aiohttp import ClientSession, ClientTimeout
 from bs4 import BeautifulSoup
+from difflib import SequenceMatcher
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-from difflib import SequenceMatcher
 
 import config
 import config_memes as cfg
@@ -15,18 +14,6 @@ from custom_filters import button_filter
 
 # Состояние пользователей
 user_state = {}  # key: user_id, value: {"lang": "en"/"ru", "suggestions": [...]}
-
-# Настройка сессии с повторными попытками
-session = requests.Session()
-retries = Retry(total=3, backoff_factor=1, status_forcelist=[500,502,503,504])
-session.mount('https://', HTTPAdapter(max_retries=retries))
-session.mount('http://', HTTPAdapter(max_retries=retries))
-
-# User-Agent
-cfg.HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/117.0 Safari/537.36"
-}
 
 bot = Client(
     name="my_bot",
@@ -40,22 +27,28 @@ def similar(a, b):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
 def clean_text(block):
-    """Удаляем все ссылки и оставляем только текст"""
     if not block:
         return ""
     for a in block.find_all("a"):
         a.replace_with(a.get_text())
     return block.get_text(strip=True)
 
-# === ПОИСК МЕМОВ ===
-def search_kym(query: str):
+# === Асинхронный поиск мемов ===
+async def fetch_html(session, url):
     try:
-        url = cfg.KYM_SEARCH_URL.format(query=query)
-        time.sleep(1)
-        r = session.get(url, headers=cfg.HEADERS, timeout=20)
-        soup = BeautifulSoup(r.text, "html.parser")
-        results = soup.select(".entry_list a")[:10]
+        async with session.get(url, headers=cfg.HEADERS, timeout=ClientTimeout(total=10)) as resp:
+            return await resp.text()
+    except:
+        return None
 
+async def search_kym(query: str):
+    url = cfg.KYM_SEARCH_URL.format(query=query)
+    async with ClientSession() as session:
+        html = await fetch_html(session, url)
+        if not html:
+            return None
+        soup = BeautifulSoup(html, "html.parser")
+        results = soup.select(".entry_list a")[:10]
         if not results:
             return []
 
@@ -63,32 +56,31 @@ def search_kym(query: str):
         for r_item in results:
             if r_item.get_text(strip=True).lower() == query.lower():
                 link = cfg.KYM_BASE_URL + r_item["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=20)
-                soup_page = BeautifulSoup(page.text, "html.parser")
+                page_html = await fetch_html(session, link)
+                if not page_html:
+                    return "⚠️ Ошибка при загрузке страницы мема на KYM."
+                soup_page = BeautifulSoup(page_html, "html.parser")
                 summary_block = soup_page.select_one(".bodycopy")
                 summary_text = clean_text(summary_block)[:cfg.MAX_TEXT_LENGTH] + "..." if summary_block else "Описание недоступно."
                 title = soup_page.select_one("h1")
                 title_text = title.get_text(strip=True) if title else "Без названия"
                 return f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
 
-        # подсказки с фильтром по схожести
-        threshold = 0.2  # минимальная схожесть
+        # подсказки
+        threshold = 0.2
         suggestions = [{"title": r.get_text(strip=True), "href": r["href"]} for r in results]
         suggestions = [s for s in suggestions if similar(s["title"], query) >= threshold]
         suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
 
-    except Exception:
-        return None
-
-def search_memepedia(query: str, lang="ru"):
-    try:
-        url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
-        time.sleep(1)
-        r = session.get(url, headers=cfg.HEADERS, timeout=20)
-        soup = BeautifulSoup(r.text, "html.parser")
+async def search_memepedia(query: str):
+    url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
+    async with ClientSession() as session:
+        html = await fetch_html(session, url)
+        if not html:
+            return "⚠️ Не удалось подключиться к Memepedia."
+        soup = BeautifulSoup(html, "html.parser")
         results = soup.select(".entry-title a")[:10]
-
         if not results:
             return "❌ Мем не найден на Memepedia."
 
@@ -96,8 +88,10 @@ def search_memepedia(query: str, lang="ru"):
         for r_item in results:
             if r_item.get_text(strip=True).lower() == query.lower():
                 link = r_item["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=20)
-                soup_page = BeautifulSoup(page.text, "html.parser")
+                page_html = await fetch_html(session, link)
+                if not page_html:
+                    return "⚠️ Ошибка при загрузке страницы мема на Memepedia."
+                soup_page = BeautifulSoup(page_html, "html.parser")
                 content_block = soup_page.select_one(".entry-content")
                 summary_text = clean_text(content_block)[:cfg.MAX_TEXT_LENGTH] + "..." if content_block else "Описание недоступно."
                 title = soup_page.select_one("h1")
@@ -110,9 +104,6 @@ def search_memepedia(query: str, lang="ru"):
         suggestions = [s for s in suggestions if similar(s["title"], query) >= threshold]
         suggestions.sort(key=lambda s: similar(s["title"], query), reverse=True)
         return suggestions
-
-    except Exception:
-        return "⚠️ Не удалось подключиться к Memepedia."
 
 # === ХЕНДЛЕРЫ ===
 @bot.on_message(filters.command("start") | button_filter(buttons.back_button))
@@ -132,7 +123,6 @@ async def time_command(_, message: Message):
     current_time = time.strftime("%H:%M:%S")
     await message.reply(f"⏰ Сейчас: <b>{current_time}</b>", reply_markup=keyboards.main_keyboard, parse_mode=ParseMode.HTML)
 
-# === КНОПКИ МЕМОВ ===
 @bot.on_message(button_filter(buttons.meme_en_button))
 async def meme_en_button(_, message: Message):
     user_state[message.from_user.id] = {"lang": "en"}
@@ -158,13 +148,13 @@ async def handle_meme_text(_, message: Message):
         for s in state["suggestions"]:
             if s["title"].lower() == query.lower():
                 link = cfg.KYM_BASE_URL + s["href"] if state["lang"] == "en" else s["href"]
-                page = session.get(link, headers=cfg.HEADERS, timeout=20)
-                soup_page = BeautifulSoup(page.text, "html.parser")
+                async with ClientSession() as session:
+                    page_html = await fetch_html(session, link)
+                soup_page = BeautifulSoup(page_html, "html.parser")
                 content_block = soup_page.select_one(".bodycopy" if state["lang"] == "en" else ".entry-content")
                 summary_text = clean_text(content_block)[:cfg.MAX_TEXT_LENGTH] + "..." if content_block else "Описание недоступно."
                 title = soup_page.select_one("h1")
                 title_text = title.get_text(strip=True) if title else "Без названия"
-
                 await message.reply(f"📖 <b>{title_text}</b>\n{summary_text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>", parse_mode=ParseMode.HTML)
                 user_state.pop(uid)
                 return
@@ -172,13 +162,13 @@ async def handle_meme_text(_, message: Message):
         await message.reply("❌ Пожалуйста, выберите один из предложенных вариантов.")
         return
 
-    # Поиск английских мемов сначала на KYM
+    # Поиск
     if state["lang"] == "en":
-        result = search_kym(query)
+        result = await search_kym(query)
         if result is None or result == []:
-            result = search_memepedia(query, lang="en")
+            result = await search_memepedia(query)
     else:
-        result = search_memepedia(query, lang="ru")
+        result = await search_memepedia(query)
 
     if isinstance(result, list) and len(result) > 0:
         user_state[uid]["suggestions"] = result

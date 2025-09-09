@@ -31,17 +31,24 @@ bot = Client(
 
 # === ФУНКЦИИ ПОИСКА ===
 def search_kym(query: str) -> str:
-    """Поиск мема на KnowYourMeme (EN) с повторными попытками."""
+    """Поиск мема на KnowYourMeme (EN)."""
     try:
         url = cfg.KYM_SEARCH_URL.format(query=query)
         r = session.get(url, headers=cfg.HEADERS, timeout=30)
         soup = BeautifulSoup(r.text, "html.parser")
 
-        first_result = soup.select_one(".entry_list a")
-        if not first_result:
+        results = soup.select(".entry_list a")[:5]
+        if not results:
             return "❌ Мем не найден на <b>KnowYourMeme</b>."
 
-        link = cfg.KYM_BASE_URL + first_result["href"]
+        # Если найдено несколько результатов → предлагаем список
+        if len(results) > 1:
+            suggestions = [r.get_text(strip=True) for r in results]
+            suggest_text = "\n".join([f"- {s}" for s in suggestions])
+            return f"🤔 Может быть, вы имели в виду:\n{suggest_text}"
+
+        # Если найден только один результат → открываем страницу
+        link = cfg.KYM_BASE_URL + results[0]["href"]
         page = session.get(link, headers=cfg.HEADERS, timeout=30)
         soup = BeautifulSoup(page.text, "html.parser")
 
@@ -52,24 +59,31 @@ def search_kym(query: str) -> str:
             return "⚠️ Не удалось извлечь данные с KnowYourMeme."
 
         text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-
         return f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
+
     except Exception as e:
         return f"⚠️ Ошибка при поиске на KnowYourMeme: {e}"
 
 
 def search_memepedia(query: str) -> str:
-    """Поиск мема на Memepedia (RU) с повторными попытками."""
+    """Поиск мема на Memepedia (RU)."""
     try:
         url = cfg.MEMEPEDIA_SEARCH_URL.format(query=query)
         r = session.get(url, headers=cfg.HEADERS, timeout=30)
         soup = BeautifulSoup(r.text, "html.parser")
 
-        first_result = soup.select_one(".entry-title a")
-        if not first_result:
+        results = soup.select(".entry-title a")[:5]
+        if not results:
             return "❌ Мем не найден на <b>Memepedia</b>."
 
-        link = first_result["href"]
+        # Если найдено несколько результатов → предлагаем список
+        if len(results) > 1:
+            suggestions = [r.get_text(strip=True) for r in results]
+            suggest_text = "\n".join([f"- {s}" for s in suggestions])
+            return f"🤔 Может быть, вы имели в виду:\n{suggest_text}"
+
+        # Если найден только один результат → открываем страницу
+        link = results[0]["href"]
         page = session.get(link, headers=cfg.HEADERS, timeout=30)
         soup = BeautifulSoup(page.text, "html.parser")
 
@@ -80,8 +94,8 @@ def search_memepedia(query: str) -> str:
             return "⚠️ Не удалось извлечь данные с Memepedia."
 
         text = summary.get_text(strip=True)[:cfg.MAX_TEXT_LENGTH] + "..."
-
         return f"📖 <b>{title.get_text(strip=True)}</b>\n{text}\n\n🔗 <a href='{link}'>Открыть на сайте</a>"
+
     except Exception as e:
         return f"⚠️ Ошибка при поиске на Memepedia: {e}"
 
